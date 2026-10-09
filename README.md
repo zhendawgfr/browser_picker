@@ -9,6 +9,11 @@ A small macOS menu bar app that becomes your default web browser and decides, fo
 - Any other link shows a small keyboard-first picker at the cursor listing your installed browsers.
 - Runs in the menu bar only (no Dock icon). Everything stays on your Mac: no network, no link history.
 
+<p align="center">
+  <img src="docs/images/picker.png" alt="The browser picker for a docs.google.com link" width="360">
+  <img src="docs/images/settings.png" alt="Settings window with remembered sites" width="300">
+</p>
+
 ## Requirements
 
 - macOS 14 or later
