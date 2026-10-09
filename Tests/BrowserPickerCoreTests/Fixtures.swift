@@ -9,6 +9,17 @@ enum Fix {
     static let firefox = Browser(id: "org.mozilla.firefox", name: "Firefox", appURL: url("file:///Applications/Firefox.app"))
     static let all = [brave, firefox, safari]
 
+    static let tBrave = BrowserTarget(browser: brave)
+    static let tSafari = BrowserTarget(browser: safari)
+    static let tFirefox = BrowserTarget(browser: firefox)
+    static let allTargets = [tBrave, tFirefox, tSafari]
+
+    static let personal = BrowserProfile(id: "Default", name: "Personal")
+    static let work = BrowserProfile(id: "Profile 1", name: "Work")
+    static let tPersonal = BrowserTarget(browser: brave, profile: personal, label: "Brave Browser — Personal")
+    static let tWork = BrowserTarget(browser: brave, profile: work, label: "Brave Browser — Work")
+    static let profileTargets = [tPersonal, tWork, tSafari]
+
     @MainActor static func freshDefaults() -> UserDefaults {
         let name = "test-\(UUID().uuidString)"
         let d = UserDefaults(suiteName: name)!

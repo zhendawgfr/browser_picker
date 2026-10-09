@@ -32,12 +32,12 @@ public struct LinkQueue: Sendable {
 
     /// Next link and its routing decision, or `nil` when empty or a picker is still open.
     /// A `.showPicker` decision marks the picker active until `pickerResolved()`.
-    public mutating func next(rules: RuleSet, browsers: [Browser]) -> (link: PendingLink, decision: RouteDecision)? {
+    public mutating func next(rules: RuleSet, targets: [BrowserTarget]) -> (link: PendingLink, decision: RouteDecision)? {
         guard !pickerActive, !pending.isEmpty else { return nil }
         let link = pending.removeFirst()
         let decision: RouteDecision = link.forcePicker
             ? .showPicker(highlight: nil)
-            : LinkRouter.route(link.url, overrideHeld: link.overrideHeld, rules: rules, browsers: browsers)
+            : LinkRouter.route(link.url, overrideHeld: link.overrideHeld, rules: rules, targets: targets)
         if case .showPicker = decision { pickerActive = true }
         return (link, decision)
     }

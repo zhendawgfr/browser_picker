@@ -6,12 +6,31 @@ public struct DomainRule: Codable, Hashable, Sendable {
     /// Snapshot of the browser's name so Settings can label a rule whose browser is gone.
     public var browserName: String
     public var savedAt: Date
+    /// Profile folder name, for rules saved against a Chromium profile. `nil` means the browser's last-used profile.
+    public var profileID: String?
+    /// Snapshot of the profile's name so Settings can label a rule whose profile is gone.
+    public var profileName: String?
 
-    public init(domain: String, bundleID: String, browserName: String, savedAt: Date = Date()) {
+    public init(domain: String, bundleID: String, browserName: String, savedAt: Date = Date(),
+                profileID: String? = nil, profileName: String? = nil) {
         self.domain = domain
         self.bundleID = bundleID
         self.browserName = browserName
         self.savedAt = savedAt
+        self.profileID = profileID
+        self.profileName = profileName
+    }
+
+    public init(domain: String, target: BrowserTarget, savedAt: Date = Date()) {
+        self.init(domain: domain, bundleID: target.browser.id, browserName: target.browser.name, savedAt: savedAt,
+                  profileID: target.profile?.id, profileName: target.profile?.name)
+    }
+
+    public var targetID: TargetID { TargetID(bundleID: bundleID, profileID: profileID) }
+
+    /// Label from the saved snapshot, for when the rule's browser or profile cannot be resolved.
+    public var snapshotLabel: String {
+        profileName.map { "\(browserName) — \($0)" } ?? browserName
     }
 }
 
@@ -30,15 +49,9 @@ public struct RuleSet: Sendable, Equatable {
         byDomain[domain]
     }
 
-    /// Most specific rule covering the link: the longest matching domain on label boundaries.
-    /// IP literals match only a rule for exactly the same address.
+    /// Rule for exactly the link's domain. Subdomains are not covered, so each one can get its own rule.
     public func rule(for url: URL) -> DomainRule? {
-        guard let domain = DomainKey.key(for: url) else { return nil }
-        if DomainKey.isIPAddress(domain) { return byDomain[domain] }
-        for suffix in DomainKey.suffixes(of: domain) {
-            if let rule = byDomain[suffix] { return rule }
-        }
-        return nil
+        DomainKey.key(for: url).flatMap { byDomain[$0] }
     }
 
     public func saving(_ rule: DomainRule) -> RuleSet {

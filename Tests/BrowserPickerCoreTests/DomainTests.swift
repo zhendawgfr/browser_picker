@@ -22,23 +22,23 @@ struct DomainKeyTests {
         #expect(DomainKey.isIPAddress("10.0.0.1"))
         #expect(!DomainKey.isIPAddress("github.com"))
     }
-    @Test func suffixes() {
-        #expect(DomainKey.suffixes(of: "a.b.c.com") == ["a.b.c.com", "b.c.com", "c.com", "com"])
-    }
 }
 
 struct RuleSetTests {
     private func rule(_ d: String, _ b: Browser) -> DomainRule {
         DomainRule(domain: d, bundleID: b.id, browserName: b.name)
     }
-    @Test func subdomainCovered() {
+    @Test func subdomainNotCovered() {
         let rs = RuleSet([rule("google.com", Fix.brave)])
-        #expect(rs.rule(for: url("https://docs.google.com/x"))?.bundleID == Fix.brave.id)
+        #expect(rs.rule(for: url("https://maps.google.com/x")) == nil)
+        #expect(rs.rule(for: url("https://google.com/x"))?.bundleID == Fix.brave.id)
+        #expect(rs.rule(for: url("https://www.google.com/search?q=x"))?.bundleID == Fix.brave.id)
     }
-    @Test func mostSpecificWins() {
-        let rs = RuleSet([rule("google.com", Fix.brave), rule("docs.google.com", Fix.safari)])
-        #expect(rs.rule(for: url("https://docs.google.com/x"))?.bundleID == Fix.safari.id)
-        #expect(rs.rule(for: url("https://mail.google.com/x"))?.bundleID == Fix.brave.id)
+    @Test func eachSubdomainHasItsOwnRule() {
+        let rs = RuleSet([rule("google.com", Fix.brave), rule("meet.google.com", Fix.safari), rule("maps.google.com", Fix.firefox)])
+        #expect(rs.rule(for: url("https://meet.google.com/abc"))?.bundleID == Fix.safari.id)
+        #expect(rs.rule(for: url("https://maps.google.com/x"))?.bundleID == Fix.firefox.id)
+        #expect(rs.rule(for: url("https://docs.google.com/x")) == nil)
     }
     @Test func noPartialLabelMatch() {
         let rs = RuleSet([rule("hub.com", Fix.brave)])
@@ -59,7 +59,7 @@ struct RuleSetTests {
 struct RuleStoreTests {
     @Test func survivesNewInstance() {
         let d = Fix.freshDefaults()
-        RuleStore(defaults: d).save(domain: "github.com", browser: Fix.brave)
+        RuleStore(defaults: d).save(domain: "github.com", target: Fix.tBrave)
         let again = RuleStore(defaults: d)
         #expect(again.rules.map(\.domain) == ["github.com"])
         #expect(again.rules.first?.browserName == "Brave Browser")
@@ -67,18 +67,18 @@ struct RuleStoreTests {
     }
     @Test func savingReplaces() {
         let store = RuleStore(defaults: Fix.freshDefaults())
-        store.save(domain: "github.com", browser: Fix.brave)
-        store.save(domain: "github.com", browser: Fix.safari)
+        store.save(domain: "github.com", target: Fix.tBrave)
+        store.save(domain: "github.com", target: Fix.tSafari)
         #expect(store.rules.count == 1)
         #expect(store.rules.first?.bundleID == Fix.safari.id)
     }
     @Test func changeAndDelete() {
         let d = Fix.freshDefaults()
         let store = RuleStore(defaults: d)
-        store.save(domain: "a.com", browser: Fix.brave)
-        store.save(domain: "b.com", browser: Fix.brave)
-        store.changeBrowser(domain: "a.com", to: Fix.safari)
-        store.changeBrowser(domain: "nope.com", to: Fix.safari)
+        store.save(domain: "a.com", target: Fix.tBrave)
+        store.save(domain: "b.com", target: Fix.tBrave)
+        store.change(domain: "a.com", to: Fix.tSafari)
+        store.change(domain: "nope.com", to: Fix.tSafari)
         store.delete(domain: "b.com")
         let again = RuleStore(defaults: d)
         #expect(again.rules.map(\.domain) == ["a.com"])
@@ -87,14 +87,14 @@ struct RuleStoreTests {
     @Test func removeAllEmpties() {
         let d = Fix.freshDefaults()
         let store = RuleStore(defaults: d)
-        store.save(domain: "a.com", browser: Fix.brave)
+        store.save(domain: "a.com", target: Fix.tBrave)
         store.removeAll()
         #expect(store.rules.isEmpty)
         #expect(RuleStore(defaults: d).rules.isEmpty)
     }
     @Test func storesVersionedJSON() throws {
         let d = Fix.freshDefaults()
-        RuleStore(defaults: d).save(domain: "a.com", browser: Fix.brave)
+        RuleStore(defaults: d).save(domain: "a.com", target: Fix.tBrave)
         let data = try #require(d.data(forKey: "domainRules"))
         let obj = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(obj["version"] as? Int == 1)

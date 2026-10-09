@@ -28,15 +28,14 @@ public final class RuleStore {
     }
 
     /// Saves a rule, replacing any existing rule for the same domain.
-    public func save(domain: String, browser: Browser) {
-        let rule = DomainRule(domain: domain, bundleID: browser.id, browserName: browser.name)
-        ruleSet = ruleSet.saving(rule)
+    public func save(domain: String, target: BrowserTarget) {
+        ruleSet = ruleSet.saving(DomainRule(domain: domain, target: target))
         persist()
     }
 
-    public func changeBrowser(domain: String, to browser: Browser) {
+    public func change(domain: String, to target: BrowserTarget) {
         guard ruleSet.rule(forDomain: domain) != nil else { return }
-        save(domain: domain, browser: browser)
+        save(domain: domain, target: target)
     }
 
     public func delete(domain: String) {

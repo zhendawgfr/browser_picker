@@ -7,7 +7,8 @@ struct SettingsView: View {
     let catalog: BrowserCatalog
     let defaultBrowser: DefaultBrowserService
 
-    @State private var browsers: [Browser] = []
+    @State private var targets: [BrowserTarget] = []
+    @State private var blocked: [Browser] = []
     @State private var confirmRemoveAll = false
 
     var body: some View {
@@ -24,6 +25,25 @@ struct SettingsView: View {
                     }
                     if let error = defaultBrowser.lastError {
                         Text(error).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if !blocked.isEmpty {
+                Section("Profiles") {
+                    Label {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("\(ListFormatter.localizedString(byJoining: blocked.map(\.name))) profiles need Full Disk Access")
+                            Text("macOS protects these browsers’ profile lists, so each shows as a single row. Add Browser Picker under Full Disk Access to pick a profile.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "lock")
+                    }
+                    HStack {
+                        Spacer()
+                        Button("Open Full Disk Access Settings…", action: openFullDiskAccess)
                     }
                 }
             }
@@ -56,24 +76,33 @@ struct SettingsView: View {
     }
 
     private func ruleRow(_ rule: DomainRule) -> some View {
-        let installed = browsers.contains { $0.id == rule.bundleID }
+        let resolved = targets.contains { $0.id == rule.targetID }
+        let installed = targets.contains { $0.browser.id == rule.bundleID }
+        // A rule without a profile on a browser listed by profile: shown as the browser's last-used profile.
+        let lastUsed = !resolved && rule.profileID == nil && installed
+        let unavailable: String? = resolved || lastUsed ? nil
+            : !installed ? "not installed"
+            : ProfileSource.forBundleID(rule.bundleID) == .arcSpaces ? "Space not found" : "profile not found"
         return HStack {
             Text(rule.domain)
             Spacer()
-            if !installed {
-                Text("not installed").font(.caption).foregroundStyle(.secondary)
+            if let unavailable {
+                Text(unavailable).font(.caption).foregroundStyle(.secondary)
             }
             Picker("Browser", selection: Binding(
-                get: { rule.bundleID },
+                get: { rule.targetID },
                 set: { id in
-                    if let browser = browsers.first(where: { $0.id == id }) {
-                        ruleStore.changeBrowser(domain: rule.domain, to: browser)
+                    if let target = targets.first(where: { $0.id == id }) {
+                        ruleStore.change(domain: rule.domain, to: target)
                     }
                 }
             )) {
-                ForEach(browsers) { Text($0.name).tag($0.id) }
-                if !installed {
-                    Text(rule.browserName).tag(rule.bundleID).disabled(true)
+                ForEach(targets) { Text($0.label).tag($0.id) }
+                if lastUsed, let browser = targets.first(where: { $0.browser.id == rule.bundleID })?.browser {
+                    Text(BrowserTarget.lastUsed(browser).label).tag(rule.targetID)
+                } else if let unavailable {
+                    Text(rule.snapshotLabel).tag(rule.targetID).disabled(true)
+                        .help(unavailable)
                 }
             }
             .labelsHidden()
@@ -88,8 +117,15 @@ struct SettingsView: View {
         }
     }
 
+    private func openFullDiskAccess() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     private func refresh() {
-        browsers = catalog.browsers()
+        targets = catalog.targets()
+        blocked = catalog.blockedBrowsers()
         defaultBrowser.refresh()
     }
 }

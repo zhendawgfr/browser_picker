@@ -19,15 +19,15 @@ struct PickerView: View {
                     .help(model.url.absoluteString)
             }
 
-            if model.browsers.isEmpty {
+            if model.targets.isEmpty {
                 Text("No browsers found")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 12)
             } else {
                 VStack(spacing: 2) {
-                    ForEach(Array(model.browsers.enumerated()), id: \.element.id) { index, browser in
-                        row(browser, index: index)
+                    ForEach(Array(model.targets.enumerated()), id: \.element.id) { index, target in
+                        row(target, index: index)
                     }
                 }
             }
@@ -40,13 +40,15 @@ struct PickerView: View {
         .frame(width: 320)
     }
 
-    private func row(_ browser: Browser, index: Int) -> some View {
+    private func row(_ target: BrowserTarget, index: Int) -> some View {
         let highlighted = index == model.highlightIndex
         return HStack(spacing: 10) {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: browser.appURL.path))
+            Image(nsImage: NSWorkspace.shared.icon(forFile: target.browser.appURL.path))
                 .resizable()
                 .frame(width: 24, height: 24)
-            Text(browser.name)
+            Text(target.label)
+                .lineLimit(1)
+                .truncationMode(.tail)
             Spacer()
             if index < 9 {
                 Text("\(index + 1)")

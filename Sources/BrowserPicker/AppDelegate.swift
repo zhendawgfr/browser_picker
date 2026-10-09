@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = StatusItemController(openSettings: { [weak self] in self?.settings.show() })
+        catalog.warmUp()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

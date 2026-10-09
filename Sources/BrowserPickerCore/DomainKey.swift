@@ -22,15 +22,4 @@ public enum DomainKey {
         return inet_pton(AF_INET, host, &v4) == 1 || inet_pton(AF_INET6, host, &v6) == 1
     }
 
-    /// Dot-suffixes from longest to shortest: `a.b.c.com` → `a.b.c.com`, `b.c.com`, `c.com`, `com`.
-    public static func suffixes(of domain: String) -> [String] {
-        var result: [String] = []
-        var rest = Substring(domain)
-        while true {
-            result.append(String(rest))
-            guard let dot = rest.firstIndex(of: ".") else { break }
-            rest = rest[rest.index(after: dot)...]
-        }
-        return result
-    }
 }

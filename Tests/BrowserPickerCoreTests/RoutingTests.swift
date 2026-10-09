@@ -19,6 +19,8 @@ struct BrowserCatalogTests {
         func displayName(at appURL: URL) -> String {
             appURL.deletingPathExtension().lastPathComponent.removingPercentEncoding ?? ""
         }
+        var states: [String: Data] = [:]
+        func profileState(forBundleID id: String) -> Data? { states[id] }
     }
 
     @Test func dedupesExcludesSelfAndSorts() {
@@ -33,21 +35,21 @@ struct LinkRouterTests {
     let rules = RuleSet([DomainRule(domain: "github.com", bundleID: Fix.safari.id, browserName: "Safari")])
 
     @Test func ruleMatchOpens() {
-        #expect(LinkRouter.route(url("https://github.com/x"), overrideHeld: false, rules: rules, browsers: Fix.all) == .open(Fix.safari))
+        #expect(LinkRouter.route(url("https://github.com/x"), overrideHeld: false, rules: rules, targets: Fix.allTargets) == .open(Fix.tSafari))
     }
     @Test func noRuleShowsPicker() {
-        #expect(LinkRouter.route(url("https://example.com"), overrideHeld: false, rules: rules, browsers: Fix.all) == .showPicker(highlight: nil))
+        #expect(LinkRouter.route(url("https://example.com"), overrideHeld: false, rules: rules, targets: Fix.allTargets) == .showPicker(highlight: nil))
     }
     @Test func missingBrowserShowsPicker() {
         let r = RuleSet([DomainRule(domain: "github.com", bundleID: "gone.Browser", browserName: "Gone")])
-        #expect(LinkRouter.route(url("https://github.com"), overrideHeld: false, rules: r, browsers: Fix.all) == .showPicker(highlight: nil))
+        #expect(LinkRouter.route(url("https://github.com"), overrideHeld: false, rules: r, targets: Fix.allTargets) == .showPicker(highlight: nil))
     }
     @Test func overrideHighlightsRemembered() {
-        #expect(LinkRouter.route(url("https://github.com"), overrideHeld: true, rules: rules, browsers: Fix.all) == .showPicker(highlight: Fix.safari.id))
+        #expect(LinkRouter.route(url("https://github.com"), overrideHeld: true, rules: rules, targets: Fix.allTargets) == .showPicker(highlight: Fix.tSafari.id))
     }
     @Test func overrideWithMissingBrowserHasNoHighlight() {
         let r = RuleSet([DomainRule(domain: "github.com", bundleID: "gone.Browser", browserName: "Gone")])
-        #expect(LinkRouter.route(url("https://github.com"), overrideHeld: true, rules: r, browsers: Fix.all) == .showPicker(highlight: nil))
+        #expect(LinkRouter.route(url("https://github.com"), overrideHeld: true, rules: r, targets: Fix.allTargets) == .showPicker(highlight: nil))
     }
 }
 
@@ -57,40 +59,40 @@ struct LinkQueueTests {
         for u in ["https://a.com", "https://b.com", "https://c.com"] { q.enqueue(PendingLink(url: url(u))) }
         var seen: [String] = []
         for _ in 0..<3 {
-            let n = q.next(rules: RuleSet(), browsers: Fix.all)
+            let n = q.next(rules: RuleSet(), targets: Fix.allTargets)
             #expect(n != nil)
             seen.append(n!.link.url.absoluteString)
-            #expect(q.next(rules: RuleSet(), browsers: Fix.all) == nil) // picker still open
+            #expect(q.next(rules: RuleSet(), targets: Fix.allTargets) == nil) // picker still open
             q.pickerResolved()
         }
         #expect(seen == ["https://a.com", "https://b.com", "https://c.com"])
-        #expect(q.next(rules: RuleSet(), browsers: Fix.all) == nil)
+        #expect(q.next(rules: RuleSet(), targets: Fix.allTargets) == nil)
     }
     @Test func ruledLinkWaitsBehindOpenPicker() {
         let rules = RuleSet([DomainRule(domain: "b.com", bundleID: Fix.brave.id, browserName: "Brave")])
         var q = LinkQueue()
         q.enqueue(PendingLink(url: url("https://a.com")))
         q.enqueue(PendingLink(url: url("https://b.com")))
-        _ = q.next(rules: rules, browsers: Fix.all)
-        #expect(q.next(rules: rules, browsers: Fix.all) == nil)
+        _ = q.next(rules: rules, targets: Fix.allTargets)
+        #expect(q.next(rules: rules, targets: Fix.allTargets) == nil)
         q.pickerResolved()
-        #expect(q.next(rules: rules, browsers: Fix.all)?.decision == .open(Fix.brave))
+        #expect(q.next(rules: rules, targets: Fix.allTargets)?.decision == .open(Fix.tBrave))
     }
     @Test func ruleSavedForAAppliesToQueuedB() {
         var q = LinkQueue()
         q.enqueue(PendingLink(url: url("https://x.com/a")))
         q.enqueue(PendingLink(url: url("https://x.com/b")))
-        _ = q.next(rules: RuleSet(), browsers: Fix.all)
+        _ = q.next(rules: RuleSet(), targets: Fix.allTargets)
         let saved = RuleSet([DomainRule(domain: "x.com", bundleID: Fix.firefox.id, browserName: "Firefox")])
         q.pickerResolved()
-        #expect(q.next(rules: saved, browsers: Fix.all)?.decision == .open(Fix.firefox))
+        #expect(q.next(rules: saved, targets: Fix.allTargets)?.decision == .open(Fix.tFirefox))
     }
     @Test func forcePickerJumpsAheadAndIgnoresRules() {
         let rules = RuleSet([DomainRule(domain: "a.com", bundleID: Fix.brave.id, browserName: "Brave")])
         var q = LinkQueue()
         q.enqueue(PendingLink(url: url("https://other.com")))
         q.pushFront(PendingLink(url: url("https://a.com"), forcePicker: true))
-        let n = q.next(rules: rules, browsers: Fix.all)
+        let n = q.next(rules: rules, targets: Fix.allTargets)
         #expect(n?.link.url.host == "a.com")
         #expect(n?.decision == .showPicker(highlight: nil))
     }
@@ -127,11 +129,11 @@ struct PanelPlacementTests {
 
 @MainActor
 struct PickerModelTests {
-    func model(_ u: String = "https://github.com/x", highlight: Browser.ID? = nil, browsers: [Browser] = Fix.all) -> PickerModel {
-        PickerModel(url: url(u), browsers: browsers, highlight: highlight)
+    func model(_ u: String = "https://github.com/x", highlight: TargetID? = nil, targets: [BrowserTarget] = Fix.allTargets) -> PickerModel {
+        PickerModel(url: url(u), targets: targets, highlight: highlight)
     }
     @Test func numberKeyChooses() {
-        #expect(model().handle(.digit(2)) == .choose(Fix.firefox, remember: false))
+        #expect(model().handle(.digit(2)) == .choose(Fix.tFirefox, remember: false))
     }
     @Test func numberOutOfRangeIgnored() {
         #expect(model().handle(.digit(9)) == .none)
@@ -140,7 +142,7 @@ struct PickerModelTests {
     @Test func arrowsThenReturn() {
         let m = model()
         #expect(m.handle(.down) == .none)
-        #expect(m.handle(.confirm) == .choose(Fix.firefox, remember: false))
+        #expect(m.handle(.confirm) == .choose(Fix.tFirefox, remember: false))
     }
     @Test func arrowsClamp() {
         let m = model()
@@ -151,15 +153,15 @@ struct PickerModelTests {
     }
     @Test func initialHighlightIsFirstOrOverride() {
         #expect(model().highlightIndex == 0)
-        #expect(model(highlight: Fix.safari.id).highlightIndex == 2)
-        #expect(model(highlight: "unknown").highlightIndex == 0)
+        #expect(model(highlight: Fix.tSafari.id).highlightIndex == 2)
+        #expect(model(highlight: TargetID(bundleID: "unknown")).highlightIndex == 0)
     }
     @Test func rememberToggleAndChoose() {
         let m = model()
         #expect(!m.remember)
         _ = m.handle(.character("r"))
         #expect(m.remember)
-        #expect(m.handle(.digit(1)) == .choose(Fix.brave, remember: true))
+        #expect(m.handle(.digit(1)) == .choose(Fix.tBrave, remember: true))
         _ = m.handle(.character("R"))
         #expect(!m.remember)
     }
@@ -169,13 +171,13 @@ struct PickerModelTests {
         _ = m.handle(.character("r"))
         #expect(!m.remember)
         m.remember = true
-        #expect(m.handle(.digit(1)) == .choose(Fix.brave, remember: false))
+        #expect(m.handle(.digit(1)) == .choose(Fix.tBrave, remember: false))
     }
     @Test func escapeCancels() {
         #expect(model().handle(.escape) == .cancel)
     }
     @Test func emptyListOnlyEscapeWorks() {
-        let m = model(browsers: [])
+        let m = model(targets: [])
         #expect(m.handle(.digit(1)) == .none)
         #expect(m.handle(.confirm) == .none)
         #expect(m.handle(.down) == .none)
@@ -184,7 +186,7 @@ struct PickerModelTests {
     @Test func clickChooses() {
         let m = model()
         m.remember = true
-        #expect(m.choose(index: 2) == .choose(Fix.safari, remember: true))
+        #expect(m.choose(index: 2) == .choose(Fix.tSafari, remember: true))
         #expect(m.choose(index: 7) == .none)
     }
 }
