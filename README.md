@@ -16,24 +16,24 @@ A small macOS menu bar app that becomes your default web browser and decides, fo
 
 ## Requirements
 
-- macOS 14 or later
-- Swift 6 toolchain (Xcode or the Xcode command line tools: `xcode-select --install`)
+- macOS 14 or later to run the app
+- Swift 6 toolchain to build it: Xcode 16 or later, or the Xcode command line tools (`xcode-select --install`). These need macOS 14.5 or later, so the app can't be built on macOS 14.0–14.4.
 
 ## Build and install
 
 ```bash
-git clone <repo-url> browser_picker   # or use your existing checkout
+git clone https://github.com/zhendawgfr/browser_picker.git
 cd browser_picker
 scripts/build-app.sh
 ```
 
-The script builds a release binary, assembles `Browser Picker.app`, signs it ad hoc, and installs it to `/Applications/Browser Picker.app`, next to your other apps (an admin account can do this without `sudo`). A running copy is quit first, and a copy left in `~/Applications` by an older build is removed. Without admin rights, install to your home folder instead: `INSTALL_DIR=~/Applications scripts/build-app.sh`. Run the tests with `swift test`. The app icon is drawn in `Resources/AppIcon.svg`; after changing it, run `scripts/make-icon.sh` (needs `brew install resvg`) to regenerate `Resources/AppIcon.icns`.
+The script builds a release binary, assembles `Browser Picker.app`, signs it ad hoc, and installs it to `/Applications/Browser Picker.app`, next to your other apps (an admin account can do this without `sudo`). A running copy is quit first, and a copy left in `~/Applications` by an older build is removed. Without admin rights, install to your home folder instead: `INSTALL_DIR=~/Applications scripts/build-app.sh`. If you do, use `~/Applications/Browser Picker.app` wherever this README says `/Applications/Browser Picker.app`. Run the tests with `swift test`. The app icon is drawn in `Resources/AppIcon.svg`; after changing it, run `scripts/make-icon.sh` (needs `brew install resvg`) to regenerate `Resources/AppIcon.icns`.
 
 ## Grant access (optional)
 
 Browser Picker works without any extra permission. Two are needed only for profiles and Spaces:
 
-- **Full Disk Access**, for Chrome and Brave profiles. macOS protects these browsers' data, so without the grant Browser Picker can't read their profile lists: Chrome and Brave show as single rows, with no prompt and no error. Arc Spaces don't need it. macOS has no prompt for this permission. When it's missing, Settings shows a **Profiles** notice naming the affected browsers, with an **Open Full Disk Access Settings…** button that opens the right pane; add `/Applications/Browser Picker.app` there with `+`. Back in Settings the notice disappears, and the next picker shows the profiles.
+- **Full Disk Access**, for Chrome and Brave profiles, and possibly those of other Chromium browsers. macOS protects these browsers' data, so without the grant Browser Picker can't read their profile lists: they show as single rows, with no prompt and no error. Arc Spaces don't need it. macOS has no prompt for this permission. When it's missing, Settings shows a **Profiles** notice naming the affected browsers, with an **Open Full Disk Access Settings…** button that opens the right pane; add `/Applications/Browser Picker.app` there with `+`. Back in Settings the notice disappears, and the next picker shows the profiles.
 - **Automation → Arc**, to open links in an Arc Space. macOS asks the first time you pick a Space. If you deny it, the app shows an alert pointing to System Settings → Privacy & Security → Automation.
 
 The app is signed ad hoc, so macOS ties these grants to the exact build. After running `scripts/build-app.sh` again, remove Browser Picker from Full Disk Access and add it again; switching the toggle is not enough. macOS may also ask about Arc again.
@@ -44,7 +44,7 @@ The app is signed ad hoc, so macOS ties these grants to the exact build. After r
 2. Choose **Settings…** from the menu bar item.
 3. Click **Make default** and confirm the macOS prompt(s) (one for `http`, one for `https`).
 
-Settings then shows "Browser Picker is your default browser". If the app is missing from System Settings → Desktop & Dock → Default web browser, see "Design risks" in `openspec/changes/add-browser-picker/design.md`.
+Settings then shows "Browser Picker is your default browser". **Make default** sets the default directly, so it works even if Browser Picker is missing from the list in System Settings → Desktop & Dock → Default web browser.
 
 ## Using it
 
@@ -59,7 +59,7 @@ Settings then shows "Browser Picker is your default browser". If the app is miss
 - **Arc**: one row per Space, such as "Arc — Pro". The link opens as a new tab in that Space, and the Space becomes active. **Limited support:** this only works while Arc is running. If Arc is quit, the link opens the usual way, wherever Arc's own settings send external links (for example Little Arc), not in the chosen Space. Arc's own profiles, as distinct from Spaces, are not offered.
 - **Safari and Firefox** stay single rows. Safari has no public way to open a link in a given profile, and Firefox profiles are not supported yet.
 - Profiles and Spaces are read again whenever the picker or Settings opens, so new, renamed and deleted ones show up without restarting. Rules keep working after a rename.
-- If a browser's profile list can't be read (for Chrome and Brave, without Full Disk Access), that browser shows as a single row, and rules naming one of its profiles show the picker instead. Browser Picker never launches a profile it hasn't just read, so it can't create an empty profile by accident.
+- If a browser's profile list can't be read (for example Chrome or Brave without Full Disk Access), that browser shows as a single row, and rules naming one of its profiles show the picker instead. Browser Picker never launches a profile it hasn't just read, so it can't create an empty profile by accident.
 
 ## Managing rules
 
