@@ -50,7 +50,7 @@ struct SettingsView: View {
 
             Section("Remembered sites") {
                 if ruleStore.rules.isEmpty {
-                    Text("No remembered sites. Tick “Remember” in the picker to add one.")
+                    Text("No remembered sites. Pick a browser with “Remember” ticked to add one.")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(ruleStore.rules, id: \.domain) { rule in

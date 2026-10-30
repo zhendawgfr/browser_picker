@@ -20,15 +20,17 @@ public final class PickerModel {
     public let domain: String?
     public let targets: [BrowserTarget]
     public private(set) var highlightIndex: Int
-    public var remember = false
+    public var remember: Bool
 
     public var canRemember: Bool { domain != nil }
 
-    public init(url: URL, targets: [BrowserTarget], highlight: TargetID? = nil) {
+    /// `remember` is the checkbox's starting state; see `LinkRouter.remembersByDefault`.
+    public init(url: URL, targets: [BrowserTarget], highlight: TargetID? = nil, remember: Bool = true) {
         self.url = url
         self.domain = DomainKey.key(for: url)
         self.targets = targets
         self.highlightIndex = targets.firstIndex { $0.id == highlight } ?? 0
+        self.remember = remember && domain != nil
     }
 
     public func toggleRemember() {

@@ -24,6 +24,12 @@ public enum LinkRouter {
         return ofBrowser.count > 1 ? .lastUsed(first.browser) : BrowserTarget(browser: first.browser)
     }
 
+    /// Starting state of the picker's remember checkbox: ticked, except when Option forces the picker over an
+    /// existing rule, where the user most likely wants a one-off choice that keeps the rule.
+    public static func remembersByDefault(overrideHeld: Bool, url: URL, rules: RuleSet) -> Bool {
+        !(overrideHeld && rules.rule(for: url) != nil)
+    }
+
     /// Picker row to highlight for a rule: its profile, or the browser's first row for a rule without one.
     public static func highlight(for rule: DomainRule, in targets: [BrowserTarget]) -> TargetID? {
         if rule.profileID != nil { return targets.first { $0.id == rule.targetID }?.id }

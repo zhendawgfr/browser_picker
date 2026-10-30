@@ -63,8 +63,8 @@ Settings then shows "Browser Picker is your default browser". **Make default** s
 ## Using it
 
 - Click a link anywhere. With no remembered rule, a picker appears at the cursor: press `1`–`9`, use the arrow keys and Return, or click. `Esc` or clicking elsewhere cancels.
-- Tick **Remember for `<domain>`** (or press `R`) to send that domain (with or without `www.`) to the chosen browser from now on. Subdomains are separate: a `google.com` rule does not cover `maps.google.com`, which asks once and can be remembered on its own.
-- Hold **Option (⌥)** while clicking a link to show the picker even when a rule exists; the remembered browser is highlighted.
+- **Remember for `<domain>`** starts ticked, so the browser you pick is remembered for that domain (with or without `www.`) from now on. Untick it, or press `R`, for a one-off choice. Subdomains are separate: a `google.com` rule does not cover `maps.google.com`, which asks once and can be remembered on its own.
+- Hold **Option (⌥)** while clicking a link to show the picker even when a rule exists; the remembered browser is highlighted, and **Remember** starts unticked so a one-off choice keeps the rule. Tick it, or press `R`, to replace the rule.
 - Opening the app again from Finder or Spotlight shows Settings.
 
 ## Profiles

@@ -127,13 +127,26 @@ struct PanelPlacementTests {
     }
 }
 
+struct RememberDefaultTests {
+    let rules = RuleSet([DomainRule(domain: "github.com", bundleID: Fix.brave.id, browserName: "Brave Browser")])
+
+    @Test func optionOverRuleStartsUnticked() {
+        #expect(!LinkRouter.remembersByDefault(overrideHeld: true, url: url("https://www.github.com/x"), rules: rules))
+    }
+    @Test func otherwiseTicked() {
+        #expect(LinkRouter.remembersByDefault(overrideHeld: true, url: url("https://example.com/x"), rules: rules))
+        #expect(LinkRouter.remembersByDefault(overrideHeld: false, url: url("https://github.com/x"), rules: rules))
+        #expect(LinkRouter.remembersByDefault(overrideHeld: false, url: url("https://example.com/x"), rules: RuleSet()))
+    }
+}
+
 @MainActor
 struct PickerModelTests {
     func model(_ u: String = "https://github.com/x", highlight: TargetID? = nil, targets: [BrowserTarget] = Fix.allTargets) -> PickerModel {
         PickerModel(url: url(u), targets: targets, highlight: highlight)
     }
     @Test func numberKeyChooses() {
-        #expect(model().handle(.digit(2)) == .choose(Fix.tFirefox, remember: false))
+        #expect(model().handle(.digit(2)) == .choose(Fix.tFirefox, remember: true))
     }
     @Test func numberOutOfRangeIgnored() {
         #expect(model().handle(.digit(9)) == .none)
@@ -142,7 +155,7 @@ struct PickerModelTests {
     @Test func arrowsThenReturn() {
         let m = model()
         #expect(m.handle(.down) == .none)
-        #expect(m.handle(.confirm) == .choose(Fix.tFirefox, remember: false))
+        #expect(m.handle(.confirm) == .choose(Fix.tFirefox, remember: true))
     }
     @Test func arrowsClamp() {
         let m = model()
@@ -156,18 +169,24 @@ struct PickerModelTests {
         #expect(model(highlight: Fix.tSafari.id).highlightIndex == 2)
         #expect(model(highlight: TargetID(bundleID: "unknown")).highlightIndex == 0)
     }
-    @Test func rememberToggleAndChoose() {
+    @Test func rememberStartsTickedAndToggles() {
         let m = model()
-        #expect(!m.remember)
+        #expect(m.remember)
         _ = m.handle(.character("r"))
+        #expect(!m.remember)
+        #expect(m.handle(.digit(1)) == .choose(Fix.tBrave, remember: false))
+        _ = m.handle(.character("R"))
         #expect(m.remember)
         #expect(m.handle(.digit(1)) == .choose(Fix.tBrave, remember: true))
-        _ = m.handle(.character("R"))
-        #expect(!m.remember)
+    }
+    @Test func rememberCanStartUnticked() {
+        let m = PickerModel(url: url("https://github.com/x"), targets: Fix.allTargets, remember: false)
+        #expect(m.handle(.digit(1)) == .choose(Fix.tBrave, remember: false))
     }
     @Test func rememberIgnoredWithoutDomain() {
         let m = model("mailto:a@b.com")
         #expect(!m.canRemember)
+        #expect(!m.remember)
         _ = m.handle(.character("r"))
         #expect(!m.remember)
         m.remember = true
@@ -185,7 +204,6 @@ struct PickerModelTests {
     }
     @Test func clickChooses() {
         let m = model()
-        m.remember = true
         #expect(m.choose(index: 2) == .choose(Fix.tSafari, remember: true))
         #expect(m.choose(index: 7) == .none)
     }

@@ -398,11 +398,11 @@ struct ProfileRouterTests {
 struct ProfilePickerTests {
     @Test func numberKeyChoosesProfile() {
         let m = PickerModel(url: url("https://github.com/x"), targets: Fix.profileTargets)
+        _ = m.handle(.character("r"))
         #expect(m.handle(.digit(2)) == .choose(Fix.tWork, remember: false))
     }
     @Test func rememberReturnsProfileTarget() {
         let m = PickerModel(url: url("https://github.com/x"), targets: Fix.profileTargets)
-        _ = m.handle(.character("r"))
         #expect(m.handle(.digit(2)) == .choose(Fix.tWork, remember: true))
     }
     @Test func highlightByProfile() {

@@ -27,7 +27,8 @@ final class LinkCoordinator {
             case .open(let target):
                 launch(link.url, in: target)
             case .showPicker(let highlight):
-                showPicker(for: link.url, targets: targets, highlight: highlight)
+                let remember = LinkRouter.remembersByDefault(overrideHeld: link.overrideHeld, url: link.url, rules: ruleStore.ruleSet)
+                showPicker(for: link.url, targets: targets, highlight: highlight, remember: remember)
                 return
             }
         }
@@ -41,8 +42,8 @@ final class LinkCoordinator {
         }
     }
 
-    private func showPicker(for url: URL, targets: [BrowserTarget], highlight: TargetID?) {
-        let model = PickerModel(url: url, targets: targets, highlight: highlight)
+    private func showPicker(for url: URL, targets: [BrowserTarget], highlight: TargetID?, remember: Bool) {
+        let model = PickerModel(url: url, targets: targets, highlight: highlight, remember: remember)
         let panel = PickerPanel(model: model) { [weak self] action in
             self?.resolve(action, model: model)
         }
