@@ -1,10 +1,10 @@
 import Foundation
 
-/// A Chromium profile or an Arc Space. `id` is the stable identity (folder name or Space ID); `name` can be renamed.
+/// A browser profile. `id` is the stable identity (the profile's folder); `name` can be renamed.
 public struct BrowserProfile: Hashable, Sendable {
     public let id: String
     public let name: String
-    /// Appended to the label only when two names collide: the folder name, or "Space <n>" for Arc.
+    /// Appended to the label only when two names collide: the profile's folder name.
     public let disambiguator: String
 
     public init(id: String, name: String, disambiguator: String? = nil) {
@@ -38,10 +38,25 @@ public struct BrowserTarget: Identifiable, Hashable, Sendable {
         self.label = label ?? browser.name
     }
 
-    /// Profile-less target for a browser that is listed by profile: opens the last-used profile, or Arc's current Space.
+    /// Profile-less target for a browser that is listed by profile: opens the last-used profile, or Firefox's default one.
     public static func lastUsed(_ browser: Browser) -> BrowserTarget {
-        let suffix = ProfileSource.forBundleID(browser.id) == .arcSpaces ? "current Space" : "last used profile"
+        let suffix = switch ProfileSource.forBundleID(browser.id) {
+        case .firefox: "default profile"
+        default: "last used profile"
+        }
         return BrowserTarget(browser: browser, label: "\(browser.name) (\(suffix))")
+    }
+}
+
+/// One profile of a Firefox profile group: a row of the group database's `Profiles` table.
+public struct ProfileGroupEntry: Hashable, Sendable {
+    /// Profile folder, relative to the Firefox root folder.
+    public let path: String
+    public let name: String
+
+    public init(path: String, name: String) {
+        self.path = path
+        self.name = name
     }
 }
 
@@ -49,12 +64,10 @@ public struct BrowserTarget: Identifiable, Hashable, Sendable {
 public enum ProfileSource: Equatable, Sendable {
     /// Chromium user-data folder under Application Support; opened with `--profile-directory`.
     case chromium(String)
-    /// Arc Spaces from the sidebar file; opened through AppleScript.
-    case arcSpaces
+    /// Firefox root folder under Application Support; opened with `--profile <folder>`.
+    case firefox(String)
 
-    public static let arcBundleID = "company.thebrowser.Browser"
-
-    /// Browsers known to be targetable per profile or Space.
+    /// Browsers known to be targetable per profile.
     private static let table: [String: ProfileSource] = [
         "com.brave.Browser": .chromium("BraveSoftware/Brave-Browser"),
         "com.brave.Browser.beta": .chromium("BraveSoftware/Brave-Browser-Beta"),
@@ -67,7 +80,7 @@ public enum ProfileSource: Equatable, Sendable {
         "com.microsoft.edgemac.Dev": .chromium("Microsoft Edge Dev"),
         "com.vivaldi.Vivaldi": .chromium("Vivaldi"),
         "org.chromium.Chromium": .chromium("Chromium"),
-        arcBundleID: .arcSpaces,
+        "org.mozilla.firefox": .firefox("Firefox"),
     ]
 
     public static func forBundleID(_ bundleID: String) -> ProfileSource? {
@@ -78,14 +91,15 @@ public enum ProfileSource: Equatable, Sendable {
     public var stateFile: String {
         switch self {
         case .chromium(let path): "\(path)/Local State"
-        case .arcSpaces: "Arc/StorableSidebar.json"
+        case .firefox(let root): "\(root)/profiles.ini"
         }
     }
 
-    public func parse(_ data: Data) -> [BrowserProfile]? {
+    /// `group` returns a Firefox profile group's profiles by store ID; Chromium ignores it.
+    public func parse(_ data: Data, group: (String) -> [ProfileGroupEntry]? = { _ in nil }) -> [BrowserProfile]? {
         switch self {
         case .chromium: ChromiumProfiles.parse(data)
-        case .arcSpaces: ArcSpaces.parse(data)
+        case .firefox: FirefoxProfiles.parse(data, group: group)
         }
     }
 }
@@ -107,22 +121,43 @@ public enum ChromiumProfiles {
     }
 }
 
-public enum ArcSpaces {
-    /// Titled Spaces from Arc's `StorableSidebar.json`, in sidebar order. `nil` when the data is malformed or has none.
-    public static func parse(_ data: Data) -> [BrowserProfile]? {
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let sidebar = root["sidebar"] as? [String: Any],
-              let containers = sidebar["containers"] as? [Any] else { return nil }
+public enum FirefoxProfiles {
+    /// Profiles listed in Firefox's `profiles.ini`, with each profile group replaced by the group's own profiles.
+    /// `id` is the profile folder as Firefox stores it. `nil` when the data is not UTF-8 or lists no profile.
+    public static func parse(_ data: Data, group: (String) -> [ProfileGroupEntry]?) -> [BrowserProfile]? {
+        guard let text = String(data: data, encoding: .utf8) else { return nil }
         var result: [BrowserProfile] = []
         var seen = Set<String>()
-        for case let container as [String: Any] in containers {
-            // `spaces` alternates an ID string and the Space object.
-            for case let space as [String: Any] in container["spaces"] as? [Any] ?? [] {
-                guard let id = space["id"] as? String, let title = space["title"] as? String,
-                      !title.isEmpty, seen.insert(id).inserted else { continue }
-                result.append(BrowserProfile(id: id, name: title, disambiguator: "Space \(result.count + 1)"))
+        func add(path: String, name: String) {
+            guard !path.isEmpty, !name.isEmpty, seen.insert(path).inserted else { return }
+            result.append(BrowserProfile(id: path, name: name, disambiguator: (path as NSString).lastPathComponent))
+        }
+        for (section, values) in sections(text) where section.hasPrefix("Profile") && section.count > 7
+            && section.dropFirst(7).allSatisfy(\.isNumber) {
+            guard let path = values["Path"], !path.isEmpty else { continue }
+            // A group's section follows its most recently used profile; list the group's profiles instead.
+            if let storeID = values["StoreID"], !storeID.isEmpty, let rows = group(storeID), !rows.isEmpty {
+                for row in rows { add(path: row.path, name: row.name) }
+            } else {
+                add(path: path, name: values["Name"] ?? "")
             }
         }
         return result.isEmpty ? nil : result
+    }
+
+    /// INI sections in file order, each with its `key=value` pairs. `;` and `#` start comment lines.
+    static func sections(_ text: String) -> [(name: String, values: [String: String])] {
+        var result: [(name: String, values: [String: String])] = []
+        for raw in text.split(whereSeparator: \.isNewline) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty || line.hasPrefix(";") || line.hasPrefix("#") { continue }
+            if line.hasPrefix("["), line.hasSuffix("]") {
+                result.append((String(line.dropFirst().dropLast()), [:]))
+            } else if let equals = line.firstIndex(of: "="), !result.isEmpty {
+                let key = line[..<equals].trimmingCharacters(in: .whitespaces)
+                result[result.count - 1].values[key] = line[line.index(after: equals)...].trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return result
     }
 }

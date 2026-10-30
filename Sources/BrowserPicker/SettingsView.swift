@@ -81,8 +81,8 @@ struct SettingsView: View {
         // A rule without a profile on a browser listed by profile: shown as the browser's last-used profile.
         let lastUsed = !resolved && rule.profileID == nil && installed
         let unavailable: String? = resolved || lastUsed ? nil
-            : !installed ? "not installed"
-            : ProfileSource.forBundleID(rule.bundleID) == .arcSpaces ? "Space not found" : "profile not found"
+            : BrowserCatalog.hiddenBundleIDs.contains(rule.bundleID) ? "not supported"
+            : !installed ? "not installed" : "profile not found"
         return HStack {
             Text(rule.domain)
             Spacer()

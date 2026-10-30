@@ -28,63 +28,197 @@ struct ChromiumProfilesTests {
     @Test func table() {
         #expect(ProfileSource.forBundleID("com.brave.Browser") == .chromium("BraveSoftware/Brave-Browser"))
         #expect(ProfileSource.forBundleID("com.brave.Browser")?.stateFile == "BraveSoftware/Brave-Browser/Local State")
-        #expect(ProfileSource.forBundleID("company.thebrowser.Browser")?.stateFile == "Arc/StorableSidebar.json")
         #expect(ProfileSource.forBundleID("com.apple.Safari") == nil)
+        #expect(ProfileSource.forBundleID("org.mozilla.firefox")?.stateFile == "Firefox/profiles.ini")
+        #expect(ProfileSource.forBundleID("org.mozilla.firefoxdeveloperedition") == nil)
+        #expect(ProfileSource.forBundleID("org.mozilla.nightly") == nil)
     }
 }
 
-/// Trimmed shape of Arc's `StorableSidebar.json`: `spaces` alternates an ID and the Space object.
-private func sidebar(_ titles: [String?]) -> Data {
-    let spaces: [Any] = titles.enumerated().flatMap { i, title -> [Any] in
-        var space: [String: Any] = ["id": "S\(i + 1)", "profile": ["default": true]]
-        if let title { space["title"] = title }
-        return ["S\(i + 1)", space]
+struct FirefoxProfilesTests {
+    private func parse(_ ini: String, groups: [String: [ProfileGroupEntry]] = [:], asked: ((String) -> Void)? = nil) -> [BrowserProfile]? {
+        FirefoxProfiles.parse(Data(ini.utf8)) { storeID in
+            asked?(storeID)
+            return groups[storeID]
+        }
     }
-    let root: [String: Any] = ["sidebar": ["containers": [["global": [:]], ["spaces": spaces, "items": []]]], "version": 1]
-    return try! JSONSerialization.data(withJSONObject: root)
+
+    @Test func parsesClassicProfiles() throws {
+        let profiles = try #require(parse("""
+        [General]\r
+        StartWithLastProfile=1\r
+        \r
+        ; comment\r
+        # another\r
+        [Profile1]\r
+        Name=Work\r
+        IsRelative=0\r
+        Path=/Volumes/Data/ff/w0rk.Work\r
+        \r
+        [Profile0]\r
+        Name = Personal \r
+        IsRelative=1\r
+        Path=Profiles/abcd1234.default-release\r
+        Default=1\r
+        [Install8216C80C92C4E828]\r
+        Default=Profiles/abcd1234.default-release\r
+        [BackgroundTasksProfiles]\r
+        MozillaBackgroundTask-1=xyz.Background\r
+        """))
+        #expect(profiles.map(\.id) == ["/Volumes/Data/ff/w0rk.Work", "Profiles/abcd1234.default-release"])
+        #expect(profiles.map(\.name) == ["Work", "Personal"])
+        #expect(profiles.map(\.disambiguator) == ["w0rk.Work", "abcd1234.default-release"])
+    }
+    @Test func skipsIncompleteSections() {
+        let ini = """
+        [Profile0]
+        Name=No path
+        [Profile1]
+        Path=Profiles/noname
+        [ProfileX]
+        Name=Not a profile
+        Path=Profiles/x
+        [Profile2]
+        Name=Ok
+        Path=Profiles/ok
+        """
+        #expect(parse(ini)?.map(\.name) == ["Ok"])
+    }
+    @Test func groupReplacedByItsProfiles() throws {
+        var asked: [String] = []
+        let profiles = try #require(parse("""
+        [Profile0]
+        Name=Original profile
+        IsRelative=1
+        Path=Profiles/aaa.Work
+        StoreID=abc
+        ShowSelector=0
+        [Profile1]
+        Name=Testing
+        IsRelative=1
+        Path=Profiles/ttt.Testing
+        """, groups: ["abc": [
+            ProfileGroupEntry(path: "Profiles/bbb.Personal", name: "Personal"),
+            ProfileGroupEntry(path: "Profiles/aaa.Work", name: "Work"),
+            ProfileGroupEntry(path: "Profiles/aaa.Work", name: "Work"),
+            ProfileGroupEntry(path: "Profiles/ccc", name: ""),
+        ]], asked: { asked.append($0) }))
+        #expect(asked == ["abc"])
+        #expect(profiles.map(\.name) == ["Personal", "Work", "Testing"])
+        #expect(profiles.map(\.id) == ["Profiles/bbb.Personal", "Profiles/aaa.Work", "Profiles/ttt.Testing"])
+    }
+    @Test func unreadableGroupKeepsItsSection() {
+        let ini = """
+        [Profile0]
+        Name=Original profile
+        Path=Profiles/aaa.Work
+        IsRelative=1
+        StoreID=abc
+        """
+        for groups in [[:], ["abc": []]] as [[String: [ProfileGroupEntry]]] {
+            #expect(parse(ini, groups: groups)?.map(\.id) == ["Profiles/aaa.Work"])
+        }
+    }
+    @Test func malformedOrEmptyIsNil() {
+        #expect(FirefoxProfiles.parse(Data([0xFF, 0xFE, 0x00]), group: { _ in nil }) == nil)
+        #expect(parse("") == nil)
+        #expect(parse("[General]\nStartWithLastProfile=1\n") == nil)
+    }
 }
 
-struct ArcSpacesTests {
-    @Test func parsesTitledSpacesInSidebarOrder() throws {
-        let spaces = try #require(ArcSpaces.parse(sidebar(["Pro", "Perso", nil, ""])))
-        #expect(spaces.map(\.name) == ["Pro", "Perso"])
-        #expect(spaces.map(\.id) == ["S1", "S2"])
-        #expect(spaces.map(\.disambiguator) == ["Space 1", "Space 2"])
+struct FirefoxCatalogTests {
+    struct Locator: ApplicationLocating {
+        var ini: String?
+        var ids = ["org.mozilla.firefox", "com.apple.Safari"]
+        func bundleIDs(forOpening url: URL) -> [String] { ids }
+        func canonicalURL(forBundleID id: String) -> URL? {
+            switch id {
+            case "org.mozilla.firefox": url("file:///Applications/Firefox.app")
+            case "org.mozilla.firefoxdeveloperedition": url("file:///Applications/Firefox%20Developer%20Edition.app")
+            default: url("file:///Applications/Safari.app")
+            }
+        }
+        func displayName(at appURL: URL) -> String { appURL.deletingPathExtension().lastPathComponent.removingPercentEncoding ?? "" }
+        func profileState(forBundleID id: String) -> Data? { ini.map { Data($0.utf8) } }
+        func profileGroup(forBundleID id: String, storeID: String) -> [ProfileGroupEntry]? {
+            storeID == "abc" ? [ProfileGroupEntry(path: "Profiles/w.Work", name: "Work"), ProfileGroupEntry(path: "Profiles/p.Personal", name: "Personal")] : nil
+        }
     }
-    @Test func malformedOrUntitledIsNil() {
-        #expect(ArcSpaces.parse(Data("nope".utf8)) == nil)
-        #expect(ArcSpaces.parse(sidebar([nil])) == nil)
-        #expect(ArcSpaces.parse(Data(#"{"sidebar":{}}"#.utf8)) == nil)
+    static func ini(_ profiles: [(String, String)]) -> String {
+        profiles.enumerated().map { "[Profile\($0)]\nName=\($1.1)\nIsRelative=1\nPath=\($1.0)\n" }.joined()
+    }
+    private func targets(_ ini: String?, ids: [String]? = nil) -> [BrowserTarget] {
+        var locator = Locator(ini: ini)
+        if let ids { locator.ids = ids }
+        return BrowserCatalog(locator: locator, ownBundleID: nil).targets()
+    }
+
+    @Test func profilesBecomeRows() {
+        let list = targets("[Profile0]\nName=Group\nPath=Profiles/w.Work\nIsRelative=1\nStoreID=abc\n")
+        #expect(list.map(\.label) == ["Firefox — Personal", "Firefox — Work", "Safari"])
+        #expect(list.map { $0.profile?.id } == ["Profiles/p.Personal", "Profiles/w.Work", nil])
+    }
+    @Test func singleProfileKeepsPlainLabelButCarriesProfile() {
+        let firefox = targets(Self.ini([("Profiles/a.default-release", "default-release")]))[0]
+        #expect(firefox.label == "Firefox")
+        #expect(firefox.profile?.id == "Profiles/a.default-release")
+    }
+    @Test func duplicateNamesGetFolder() {
+        let list = targets(Self.ini([("Profiles/e5f6g7h8.Work", "Work"), ("Profiles/a1b2c3d4.Work", "Work")]))
+        #expect(list.prefix(2).map(\.label) == ["Firefox — Work (a1b2c3d4.Work)", "Firefox — Work (e5f6g7h8.Work)"])
+    }
+    @Test func unreadableFallsBack() {
+        let firefox = targets(nil)[0]
+        #expect(firefox.label == "Firefox")
+        #expect(firefox.profile == nil)
+    }
+    @Test func developerEditionStaysOneRow() {
+        let list = targets(Self.ini([("Profiles/a", "A"), ("Profiles/b", "B")]), ids: ["org.mozilla.firefoxdeveloperedition"])
+        #expect(list.map(\.label) == ["Firefox Developer Edition"])
+        #expect(list[0].profile == nil)
+    }
+
+    @Test func profileRuleRouting() throws {
+        let list = targets(Self.ini([("Profiles/p.Personal", "Personal"), ("Profiles/w.Work", "Work")]))
+        let work = try #require(list.first { $0.profile?.id == "Profiles/w.Work" })
+        let rules = RuleSet([DomainRule(domain: "github.com", target: work)])
+        let link = url("https://github.com/x")
+        #expect(LinkRouter.route(link, overrideHeld: false, rules: rules, targets: list) == .open(work))
+        let withoutWork = targets(Self.ini([("Profiles/p.Personal", "Personal"), ("Profiles/j.Job", "Job")]))
+        #expect(LinkRouter.route(link, overrideHeld: false, rules: rules, targets: withoutWork) == .showPicker(highlight: nil))
+    }
+    @Test func legacyRuleOpensDefaultProfile() {
+        let list = targets(Self.ini([("Profiles/p.Personal", "Personal"), ("Profiles/w.Work", "Work")]))
+        let rules = RuleSet([DomainRule(domain: "github.com", bundleID: Fix.firefox.id, browserName: "Firefox")])
+        #expect(LinkRouter.route(url("https://github.com/x"), overrideHeld: false, rules: rules, targets: list)
+            == .open(BrowserTarget(browser: Fix.firefox, label: "Firefox (default profile)")))
     }
 }
 
-struct ArcCatalogTests {
-    struct ArcLocator: ApplicationLocating {
-        var sidebarData: Data?
-        func bundleIDs(forOpening url: URL) -> [String] { ["company.thebrowser.Browser", "com.apple.Safari"] }
+struct HiddenArcTests {
+    static let arcID = "company.thebrowser.Browser"
+    struct Locator: ApplicationLocating {
+        var ids = [HiddenArcTests.arcID, "com.apple.Safari"]
+        func bundleIDs(forOpening url: URL) -> [String] { ids }
         func canonicalURL(forBundleID id: String) -> URL? { url("file:///Applications/\(id == "com.apple.Safari" ? "Safari" : "Arc").app") }
         func displayName(at appURL: URL) -> String { appURL.deletingPathExtension().lastPathComponent }
-        func profileState(forBundleID id: String) -> Data? { id == "company.thebrowser.Browser" ? sidebarData : nil }
+        func profileState(forBundleID id: String) -> Data? { nil }
     }
-    private func targets(_ titles: [String?]?) -> [BrowserTarget] {
-        BrowserCatalog(locator: ArcLocator(sidebarData: titles.map(sidebar)), ownBundleID: nil).targets()
-    }
+    let link = url("https://github.com/x")
 
-    @Test func spacesBecomeRows() {
-        let list = targets(["Pro", "Perso", nil])
-        #expect(list.map(\.label) == ["Arc — Perso", "Arc — Pro", "Safari"])
-        #expect(list.map { $0.profile?.id } == ["S2", "S1", nil])
+    @Test func arcIsNotListed() {
+        #expect(BrowserCatalog(locator: Locator(), ownBundleID: nil).targets().map(\.label) == ["Safari"])
     }
-    @Test func singleSpaceIsPlainArc() {
-        let arc = targets(["Perso"])[0]
-        #expect(arc.label == "Arc")
-        #expect(arc.profile == nil)
+    @Test func onlyArcMeansNoBrowsers() {
+        #expect(BrowserCatalog(locator: Locator(ids: [Self.arcID]), ownBundleID: nil).targets().isEmpty)
     }
-    @Test func duplicateTitlesGetSpaceNumber() {
-        #expect(targets(["Work", "Home", "Work"]).map(\.label) == ["Arc — Home", "Arc — Work (Space 1)", "Arc — Work (Space 3)", "Safari"])
-    }
-    @Test func unreadableSidebarFallsBack() {
-        #expect(targets(nil).map(\.label) == ["Arc", "Safari"])
+    @Test func arcRulesShowPicker() {
+        let targets = BrowserCatalog(locator: Locator(), ownBundleID: nil).targets()
+        for profileID in [nil, "S1"] {
+            let rules = RuleSet([DomainRule(domain: "github.com", bundleID: Self.arcID, browserName: "Arc", profileID: profileID, profileName: profileID.map { _ in "Pro" })])
+            #expect(LinkRouter.route(link, overrideHeld: false, rules: rules, targets: targets) == .showPicker(highlight: nil))
+            #expect(LinkRouter.route(link, overrideHeld: true, rules: rules, targets: targets) == .showPicker(highlight: nil))
+        }
     }
 }
 
@@ -140,8 +274,8 @@ struct ProfileCacheTests {
             func canonicalURL(forBundleID id: String) -> URL? { url("file:///Applications/\(id).app") }
             func displayName(at appURL: URL) -> String { appURL.deletingPathExtension().lastPathComponent }
             func profileState(forBundleID id: String) -> Data? { nil }
-            // Safari is "blocked" too, but has no profile source, so it is not listed.
-            func isProfileStateBlocked(forBundleID id: String) -> Bool { id != "company.thebrowser.Browser" }
+            // Safari is "blocked" too, but has no profile source, so it is not listed. Arc is hidden.
+            func isProfileStateBlocked(forBundleID id: String) -> Bool { true }
         }
         let blocked = BrowserCatalog(locator: Locator(), ownBundleID: nil).blockedBrowsers()
         #expect(blocked.map(\.id) == ["com.brave.Browser", "com.google.Chrome"])
@@ -251,13 +385,6 @@ struct ProfileRouterTests {
         #expect(target.profile == nil)
         #expect(target.browser == Fix.brave)
         #expect(target.label == "Brave Browser (last used profile)")
-    }
-    @Test func legacyArcRuleOpensCurrentSpace() {
-        let arc = Browser(id: "company.thebrowser.Browser", name: "Arc", appURL: url("file:///Applications/Arc.app"))
-        let spaces = [BrowserProfile(id: "S1", name: "Perso"), BrowserProfile(id: "S2", name: "Pro")]
-            .map { BrowserTarget(browser: arc, profile: $0, label: "Arc — \($0.name)") }
-        let rules = RuleSet([DomainRule(domain: "github.com", bundleID: arc.id, browserName: "Arc")])
-        #expect(LinkRouter.route(link, overrideHeld: false, rules: rules, targets: spaces) == .open(BrowserTarget(browser: arc, label: "Arc (current Space)")))
     }
     @Test func overrideHighlightsProfile() {
         #expect(LinkRouter.route(link, overrideHeld: true, rules: profileRule, targets: Fix.profileTargets) == .showPicker(highlight: Fix.tWork.id))

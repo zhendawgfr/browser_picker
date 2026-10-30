@@ -26,14 +26,17 @@ public protocol ApplicationLocating: Sendable {
     func profileStateDate(forBundleID bundleID: String) -> Date?
     /// True when the file exists but macOS refuses to open it (Chrome and Brave without Full Disk Access).
     func isProfileStateBlocked(forBundleID bundleID: String) -> Bool
+    /// Profiles of a Firefox profile group, or `nil` when its database is missing or cannot be read.
+    func profileGroup(forBundleID bundleID: String, storeID: String) -> [ProfileGroupEntry]?
 }
 
 extension ApplicationLocating {
     public func profileStateDate(forBundleID bundleID: String) -> Date? { nil }
     public func isProfileStateBlocked(forBundleID bundleID: String) -> Bool { false }
+    public func profileGroup(forBundleID bundleID: String, storeID: String) -> [ProfileGroupEntry]? { nil }
 }
 
-/// Parsed profile lists keyed by bundle ID and file modification date. Arc's sidebar file is several MB.
+/// Parsed profile lists keyed by bundle ID and file modification date. Chromium's `Local State` can be hundreds of KB.
 final class ProfileCache: @unchecked Sendable {
     private let lock = NSLock()
     private var entries: [String: (date: Date, profiles: [BrowserProfile])] = [:]
@@ -53,6 +56,9 @@ public struct BrowserCatalog: Sendable {
     private let ownBundleID: String?
     private let cache = ProfileCache()
 
+    /// Browsers never offered, even when installed: Arc (see browser-discovery spec).
+    public static let hiddenBundleIDs: Set<String> = ["company.thebrowser.Browser"]
+
     public init(locator: any ApplicationLocating, ownBundleID: String?) {
         self.locator = locator
         self.ownBundleID = ownBundleID
@@ -63,7 +69,7 @@ public struct BrowserCatalog: Sendable {
         var seen = Set<String>()
         var result: [Browser] = []
         for bundleID in locator.bundleIDs(forOpening: probe) {
-            guard bundleID != ownBundleID, seen.insert(bundleID).inserted,
+            guard bundleID != ownBundleID, !Self.hiddenBundleIDs.contains(bundleID), seen.insert(bundleID).inserted,
                   let url = locator.canonicalURL(forBundleID: bundleID) else { continue }
             result.append(Browser(id: bundleID, name: locator.displayName(at: url), appURL: url))
         }
@@ -76,9 +82,8 @@ public struct BrowserCatalog: Sendable {
     }
 
     /// Parses changed profile files into the cache off the main thread, so the next picker is fast.
-    public func warmUp(after delay: Duration = .zero) {
+    public func warmUp() {
         Task.detached(priority: .utility) {
-            try? await Task.sleep(for: delay)
             _ = targets()
         }
     }
@@ -88,14 +93,15 @@ public struct BrowserCatalog: Sendable {
         browsers().flatMap { browser -> [BrowserTarget] in
             guard let source = ProfileSource.forBundleID(browser.id),
                   let profiles = cache.profiles(for: browser.id, date: locator.profileStateDate(forBundleID: browser.id), load: {
-                      locator.profileState(forBundleID: browser.id).flatMap(source.parse)
+                      locator.profileState(forBundleID: browser.id).flatMap {
+                          source.parse($0) { locator.profileGroup(forBundleID: browser.id, storeID: $0) }
+                      }
                   }) else {
                 return [BrowserTarget(browser: browser)]
             }
             if profiles.count == 1 {
-                // A lone Chromium profile is still targeted, so a rule saved from it survives adding a second one.
-                // A lone Arc Space is not, so Arc with one Space never needs the Automation permission.
-                return [BrowserTarget(browser: browser, profile: source == .arcSpaces ? nil : profiles[0])]
+                // A lone profile is still targeted, so a rule saved from it survives adding a second one.
+                return [BrowserTarget(browser: browser, profile: profiles[0])]
             }
             let nameCounts = Dictionary(profiles.map { ($0.name, 1) }, uniquingKeysWith: +)
             return profiles

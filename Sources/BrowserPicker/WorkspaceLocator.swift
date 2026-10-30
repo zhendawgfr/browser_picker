@@ -1,5 +1,6 @@
 import AppKit
 import BrowserPickerCore
+import SQLite3
 
 struct WorkspaceLocator: ApplicationLocating {
     func bundleIDs(forOpening url: URL) -> [String] {
@@ -20,8 +21,49 @@ struct WorkspaceLocator: ApplicationLocating {
     func profileStateDate(forBundleID bundleID: String) -> Date? {
         guard let source = ProfileSource.forBundleID(bundleID),
               let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
-        let path = support.appending(path: source.stateFile).path
-        return (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
+        var files = [support.appending(path: source.stateFile)]
+        if case .firefox(let root) = source {
+            // Renaming a profile in Firefox's profile manager may only touch a group database or its WAL.
+            let groups = support.appending(path: "\(root)/Profile Groups")
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: groups.path)) ?? []
+            files += names.filter { $0.hasSuffix(".sqlite") || $0.hasSuffix(".sqlite-wal") }.map { groups.appending(path: $0) }
+        }
+        return files.compactMap { (try? FileManager.default.attributesOfItem(atPath: $0.path))?[.modificationDate] as? Date }.max()
+    }
+
+    /// Reads a Firefox profile group's `Profiles` table, read-only, so Firefox's data is never written.
+    func profileGroup(forBundleID bundleID: String, storeID: String) -> [ProfileGroupEntry]? {
+        guard case .firefox(let root)? = ProfileSource.forBundleID(bundleID),
+              // The store ID comes from profiles.ini and becomes a file name: keep it from naming another file.
+              !storeID.isEmpty, storeID.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }),
+              let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
+        let file = support.appending(path: "\(root)/Profile Groups/\(storeID).sqlite")
+        // Firefox keeps the database in WAL mode and deletes its -shm file on quit, and a read-only connection
+        // cannot recreate it. A cleanly closed database is fully checkpointed, so read it as immutable then.
+        return Self.profileRows(at: file.path, flags: SQLITE_OPEN_READONLY)
+            ?? Self.profileRows(at: file.absoluteString + "?immutable=1", flags: SQLITE_OPEN_READONLY | SQLITE_OPEN_URI)
+    }
+
+    private static func profileRows(at location: String, flags: Int32) -> [ProfileGroupEntry]? {
+        var db: OpaquePointer?
+        defer { sqlite3_close(db) }
+        guard sqlite3_open_v2(location, &db, flags, nil) == SQLITE_OK else { return nil }
+        sqlite3_busy_timeout(db, 100)
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, "SELECT path, name FROM Profiles ORDER BY id", -1, &statement, nil) == SQLITE_OK else { return nil }
+        var rows: [ProfileGroupEntry] = []
+        while true {
+            switch sqlite3_step(statement) {
+            case SQLITE_ROW:
+                guard let path = sqlite3_column_text(statement, 0), let name = sqlite3_column_text(statement, 1) else { continue }
+                rows.append(ProfileGroupEntry(path: String(cString: path), name: String(cString: name)))
+            case SQLITE_DONE:
+                return rows
+            default:
+                return nil
+            }
+        }
     }
 
     func isProfileStateBlocked(forBundleID bundleID: String) -> Bool {

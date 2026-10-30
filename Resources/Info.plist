@@ -36,8 +36,6 @@
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSAppleEventsUsageDescription</key>
-	<string>Browser Picker opens links in the Arc Space you choose.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

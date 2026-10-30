@@ -34,8 +34,6 @@ final class LinkCoordinator {
     }
 
     private func launch(_ url: URL, in target: BrowserTarget) {
-        // Opening a link makes Arc rewrite its multi-MB sidebar file shortly after; re-parse it before the next picker.
-        catalog.warmUp(after: .seconds(3))
         BrowserLauncher.open(url, in: target) { [weak self] in
             guard let self else { return }
             self.queue.pushFront(PendingLink(url: url, forcePicker: true))
