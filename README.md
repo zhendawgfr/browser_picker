@@ -17,9 +17,22 @@ A small macOS menu bar app that becomes your default web browser and decides, fo
 ## Requirements
 
 - macOS 14 or later to run the app
-- Swift 6 toolchain to build it: Xcode 16 or later, or the Xcode command line tools (`xcode-select --install`). These need macOS 14.5 or later, so the app can't be built on macOS 14.0–14.4.
+- A Mac with Apple silicon to use the ready-made download. Intel Macs can build it from source.
+- To build from source only: a Swift 6 toolchain, either Xcode 16 or later or the Xcode command line tools (`xcode-select --install`). These need macOS 14.5 or later, so the app can't be built on macOS 14.0–14.4.
 
-## Build and install
+## Download
+
+No Xcode needed:
+
+1. Download `Browser-Picker-<version>.zip` from the [latest release](https://github.com/zhendawgfr/browser_picker/releases/latest).
+2. Open the zip and move `Browser Picker.app` to `/Applications`.
+3. Open it. The app is not notarized by Apple, so the first time macOS says it can't verify it and won't open it. Click **Done**, then go to System Settings → Privacy & Security, scroll to Security, click **Open Anyway** next to "Browser Picker was blocked", and confirm. macOS remembers this for that copy of the app.
+
+   If you prefer Terminal, this does the same: `xattr -dr com.apple.quarantine "/Applications/Browser Picker.app"`.
+
+To update, quit Browser Picker, replace the app with the new download, and repeat step 3. Each release is a new ad hoc build, so re-add it under Full Disk Access too (see "Grant access").
+
+## Build from source
 
 ```bash
 git clone https://github.com/zhendawgfr/browser_picker.git
@@ -29,13 +42,15 @@ scripts/build-app.sh
 
 The script builds a release binary, assembles `Browser Picker.app`, signs it ad hoc, and installs it to `/Applications/Browser Picker.app`, next to your other apps (an admin account can do this without `sudo`). A running copy is quit first, and a copy left in `~/Applications` by an older build is removed. Without admin rights, install to your home folder instead: `INSTALL_DIR=~/Applications scripts/build-app.sh`. If you do, use `~/Applications/Browser Picker.app` wherever this README says `/Applications/Browser Picker.app`. Run the tests with `swift test`. The app icon is drawn in `Resources/AppIcon.svg`; after changing it, run `scripts/make-icon.sh` (needs `brew install resvg`) to regenerate `Resources/AppIcon.icns`.
 
+Publishing a GitHub release runs `.github/workflows/release.yml`, which tests and builds that tag and attaches `Browser-Picker-<tag>.zip` to the release. To add the app to an existing release, run the workflow by hand from the Actions tab with that release's tag. `VERSION=1.2.0 scripts/build-app.sh --zip` builds the same zip locally in `build/` without installing anything.
+
 ## Grant access (optional)
 
 Browser Picker works without any extra permission. One is needed only for some browsers' profiles:
 
 - **Full Disk Access**, for Chrome, Brave and Firefox profiles, and possibly those of other Chromium browsers. macOS protects these browsers' data, so without the grant Browser Picker can't read their profile lists: they show as single rows, with no prompt and no error. macOS has no prompt for this permission. When it's missing, Settings shows a **Profiles** notice naming the affected browsers, with an **Open Full Disk Access Settings…** button that opens the right pane; add `/Applications/Browser Picker.app` there with `+`. Back in Settings the notice disappears, and the next picker shows the profiles.
 
-The app is signed ad hoc, so macOS ties this grant to the exact build. After running `scripts/build-app.sh` again, remove Browser Picker from Full Disk Access and add it again; switching the toggle is not enough.
+The app is signed ad hoc, so macOS ties this grant to the exact build. After running `scripts/build-app.sh` again or installing a new download, remove Browser Picker from Full Disk Access and add it again; switching the toggle is not enough.
 
 ## Make it your default browser
 

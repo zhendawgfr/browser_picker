@@ -1,0 +1,49 @@
+# Builds Browser Picker from a release tag and attaches Browser-Picker-<tag>.zip to that release.
+# Runs when a release is published. Run it by hand ("Run workflow") to add the app to an existing release.
+name: Release app
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and attach the app to, e.g. 1.2.0
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    # Apple silicon runner: the app is built for arm64 only.
+    runs-on: macos-15
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      # The packaging script comes from the workflow's own commit, so older tags can be packaged too.
+      - name: Check out packaging script
+        uses: actions/checkout@v4
+        with:
+          path: tools
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          path: src
+      - name: Test
+        working-directory: src
+        run: swift test
+      - name: Package
+        working-directory: src
+        run: |
+          cp ../tools/scripts/build-app.sh scripts/build-app.sh
+          VERSION="$TAG" scripts/build-app.sh --zip
+          unzip -q "build/Browser-Picker-$TAG.zip" -d "$RUNNER_TEMP/check"
+          codesign --verify --strict "$RUNNER_TEMP/check/Browser Picker.app"
+          lipo -archs "$RUNNER_TEMP/check/Browser Picker.app/Contents/MacOS/BrowserPicker"
+      - name: Attach to release
+        working-directory: src
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "build/Browser-Picker-$TAG.zip" --clobber --repo "$GITHUB_REPOSITORY"
