@@ -55,9 +55,9 @@ Settings then shows "Browser Picker is your default browser". **Make default** s
 ## Profiles
 
 - **Chromium browsers**: Brave (release, Beta, Nightly), Google Chrome (release, Beta, Canary), Microsoft Edge (release, Beta, Dev), Vivaldi and Chromium. A browser with several profiles gets one row per profile, such as "Google Chrome — Work", sorted by profile name. With one profile it shows as a single row named after the browser. The link opens in that profile whether or not the browser is running. Only Brave and Chrome were tested; the others use the same mechanism.
-- **Firefox** (release, Beta and ESR): one row per profile, such as "Firefox — Work", the same way. Both classic profiles (from `about:profiles`) and profiles made with Firefox's newer profile manager are listed. The link opens in that profile whether Firefox is quit, running that profile, or running only other profiles. Each running Firefox profile is its own Firefox instance with its own Dock icon; that is how Firefox runs several profiles on macOS. Firefox Developer Edition and Nightly stay single rows.
+- **Firefox** (release, Beta and ESR): one row per profile, such as "Firefox — Work", the same way. Both classic profiles (from `about:profiles`) and profiles made with Firefox's newer profile manager are listed. The link opens in that profile whether Firefox is quit, running that profile, or running only other profiles. Each running Firefox profile is its own Firefox instance with its own Dock icon; that is how Firefox runs several profiles on macOS. Firefox also creates a legacy profile named "default" on first run, so a "Firefox — default" row is expected; it is listed in `about:profiles` too. Firefox Developer Edition and Nightly stay single rows.
 - **Safari** stays a single row: it has no public way to open a link in a given profile.
-- **Arc** is not offered, even when it is installed. Rules saved for Arc or an Arc Space by an earlier version are kept and labelled "not supported" (see "Managing rules").
+- **Arc** is not offered, even when it is installed. Rules saved for Arc or an Arc Space by an earlier version are kept and labelled "not supported" (see "Managing rules"). Browser Picker no longer controls Arc, so an entry an earlier version left under System Settings → Privacy & Security → Automation can be removed.
 - Profiles are read again whenever the picker or Settings opens, so new, renamed and deleted ones show up without restarting. Rules keep working after a rename.
 - If a browser's profile list can't be read (for example Chrome, Brave or Firefox without Full Disk Access), that browser shows as a single row, and rules naming one of its profiles show the picker instead. Browser Picker never launches a profile it hasn't just read, so it can't create an empty profile by accident.
 
@@ -73,6 +73,7 @@ Rules are stored locally in `UserDefaults` (`dev.evgenyivanov.BrowserPicker`, ke
 
 ## Known limitations
 
+- Firefox, Firefox Developer Edition and Firefox Nightly share one profile list, so Firefox's rows can include a Developer Edition or Nightly profile, such as "Firefox — dev-edition-default". Opening one in regular Firefox may show Firefox's warning about a profile used by a newer version.
 - If Browser Picker is not running when you Option-click a link, macOS launches it and you may release Option before the link arrives, so a remembered browser opens instead of the picker. The app stays running after the first launch, so this is rare.
 
 ## Roll back
